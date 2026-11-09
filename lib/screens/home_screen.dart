@@ -1,16 +1,18 @@
+import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../data/diet_data.dart';
 import '../models/blood_group.dart';
 import '../services/personality_service.dart';
+import '../widgets/ad_banner.dart';
 import 'diet_screen.dart';
 import 'profile_screen.dart';
 import 'recipes_screen.dart';
 import 'personality_screen.dart';
 import 'nutrizionista_page.dart';
 import 'favorites_screen.dart';
-import '../widgets/ad_banner.dart';
+import 'meal_plan_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   final String? initialGroup;
@@ -202,8 +204,29 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               GridView.count(shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), crossAxisCount: 2, mainAxisSpacing: 12, crossAxisSpacing: 12, childAspectRatio: 0.80, children: DietData.diets.map(_buildGroupCard).toList()),
               
               const SizedBox(height: 12),
+
+              // 👉 PULSANTE PIANO ALIMENTARE
+              Card(
+                elevation: 2,
+                margin: EdgeInsets.zero,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                color: Colors.blue.shade50,
+                child: ListTile(
+                  leading: const Icon(Icons.calendar_today, color: Colors.blueAccent, size: 28),
+                  title: const Text('Il Mio Piano Alimentare', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.blueAccent)),
+                  subtitle: const Text('Crea il tuo piano personalizzato', style: TextStyle(color: Colors.blueAccent)),
+                  trailing: const Icon(Icons.arrow_forward_ios, color: Colors.blueAccent, size: 18),
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const MealPlanScreen()),
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(height: 12),
               
-              // PULSANTE PREFERITI
+              // ✅ PULSANTE PREFERITI (aggiornato con initialGroup)
               Card(
                 elevation: 2,
                 margin: EdgeInsets.zero,
@@ -212,12 +235,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 child: ListTile(
                   leading: const Icon(Icons.favorite, color: Colors.redAccent, size: 28),
                   title: const Text('I miei Preferiti', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.redAccent)),
-                  subtitle: const Text('Visualizza la lista degli alimenti salvati', style: TextStyle(color: Colors.redAccent)),
+                  subtitle: const Text('Visualizza i preferiti di tutti i gruppi', style: TextStyle(color: Colors.redAccent)),
                   trailing: const Icon(Icons.arrow_forward_ios, color: Colors.redAccent, size: 18),
                   onTap: () {
                     Navigator.push(
                       context,
-                      MaterialPageRoute(builder: (context) => const FavoritesScreen()),
+                      MaterialPageRoute(
+                        builder: (context) => FavoritesScreen(initialGroup: _selectedGroup),
+                      ),
                     );
                   },
                 ),
@@ -226,12 +251,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               const SizedBox(height: 12),
               Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(gradient: const LinearGradient(colors: [Color(0xFFE0F7FA), Color(0xFFE8F5E9)], begin: Alignment.topLeft, end: Alignment.bottomRight), borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFF26A69A).withOpacity(0.3), width: 1.2)), child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [Container(padding: const EdgeInsets.all(5), decoration: BoxDecoration(color: const Color(0xFF26A69A), borderRadius: BorderRadius.circular(6)), child: const Icon(Icons.info_rounded, color: Colors.white, size: 14)), const SizedBox(width: 8), Expanded(child: Text('I contenuti della App sono a scopo informativo e non sostituiscono il parere medico.', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w500, color: Color(0xFF546E7A), height: 1.2)))])),
               
-              // Spazio extra per evitare che il banner copra il disclaimer
               const SizedBox(height: 60),
             ],
           ),
         ),
-        bottomNavigationBar: const AdBanner(), // ← BANNER PUBBLICITARIO
+        bottomNavigationBar: const AdBanner(),
       ),
     );
   }
