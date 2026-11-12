@@ -6,9 +6,40 @@ class RecipeDetailScreen extends StatelessWidget {
 
   const RecipeDetailScreen({super.key, required this.recipe});
 
+  // Parsa gli ingredienti in una lista (separati da \n, ; o ,)
+  List<String> _parseIngredients(String ingredientsText) {
+    if (ingredientsText.isEmpty) return [];
+    
+    // Sostituisce \n con ; per uniformare i separatori
+    String normalized = ingredientsText.replaceAll('\n', ';');
+    
+    // Divide per ; o ,
+    List<String> items = normalized.split(RegExp(r'[;,\n]'));
+    
+    // Pulisce e filtra
+    return items
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
+  }
+
+  // Parsa la preparazione in paragrafi (separati da \n)
+  List<String> _parsePreparation(String prepText) {
+    if (prepText.isEmpty) return [];
+    
+    // Divide per \n e filtra righe vuote
+    return prepText
+        .split('\n')
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
+  }
+
   @override
   Widget build(BuildContext context) {
     final Color accentColor = const Color(0xFFFF6D00);
+    final ingredients = _parseIngredients(recipe.ingredientiDisplay);
+    final preparationSteps = _parsePreparation(recipe.preparazione);
 
     return Scaffold(
       appBar: AppBar(
@@ -31,12 +62,16 @@ class RecipeDetailScreen extends StatelessWidget {
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
                 gradient: LinearGradient(
-                  colors: [accentColor.withOpacity(0.15), accentColor.withOpacity(0.05)],
+                  colors: [
+                    accentColor.withOpacity(0.15),
+                    accentColor.withOpacity(0.05)
+                  ],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: accentColor.withOpacity(0.3), width: 1.5),
+                border: Border.all(
+                    color: accentColor.withOpacity(0.3), width: 1.5),
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceAround,
@@ -44,14 +79,21 @@ class RecipeDetailScreen extends StatelessWidget {
                   _buildInfoItem(
                     icon: Icons.timer_outlined,
                     label: 'Tempo',
-                    value: recipe.tempo.isNotEmpty ? '${recipe.tempo} min' : 'N/D',
+                    value: recipe.tempo.isNotEmpty
+                        ? '${recipe.tempo} min'
+                        : 'N/D',
                     color: accentColor,
                   ),
-                  Container(width: 1, height: 40, color: accentColor.withOpacity(0.3)),
+                  Container(
+                      width: 1,
+                      height: 40,
+                      color: accentColor.withOpacity(0.3)),
                   _buildInfoItem(
                     icon: Icons.bar_chart_outlined,
                     label: 'Difficoltà',
-                    value: recipe.difficolta.isNotEmpty ? recipe.difficolta : 'N/D',
+                    value: recipe.difficolta.isNotEmpty
+                        ? recipe.difficolta
+                        : 'N/D',
                     color: accentColor,
                   ),
                 ],
@@ -59,8 +101,8 @@ class RecipeDetailScreen extends StatelessWidget {
             ),
             const SizedBox(height: 24),
 
-            // Sezione Ingredienti
-            if (recipe.ingredientiDisplay.isNotEmpty) ...[
+            // ✅ Sezione Ingredienti - ogni ingrediente su una riga
+            if (ingredients.isNotEmpty) ...[
               _buildSectionHeader(
                 title: 'INGREDIENTI',
                 icon: Icons.shopping_basket,
@@ -82,23 +124,50 @@ class RecipeDetailScreen extends StatelessWidget {
                     ),
                   ],
                 ),
-                child: Text(
-                  recipe.ingredientiDisplay,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    height: 1.6,
-                    color: Color(0xFF37474F),
-                  ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: ingredients.map((ingredient) {
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Bullet point
+                          Container(
+                            margin: const EdgeInsets.only(top: 6),
+                            width: 6,
+                            height: 6,
+                            decoration: BoxDecoration(
+                              color: accentColor,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          // Ingrediente
+                          Expanded(
+                            child: Text(
+                              ingredient,
+                              style: const TextStyle(
+                                fontSize: 15,
+                                height: 1.4,
+                                color: Color(0xFF37474F),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }).toList(),
                 ),
               ),
               const SizedBox(height: 24),
             ],
 
-            // Sezione Preparazione
-            if (recipe.preparazione.isNotEmpty) ...[
+            // ✅ Sezione Preparazione - accapo ad ogni punto
+            if (preparationSteps.isNotEmpty) ...[
               _buildSectionHeader(
                 title: 'PREPARAZIONE',
-                icon: Icons.local_dining,  // 👈 CORRETTO: sostituito chef_hat con local_dining
+                icon: Icons.local_dining,
                 color: accentColor,
               ),
               const SizedBox(height: 12),
@@ -117,20 +186,58 @@ class RecipeDetailScreen extends StatelessWidget {
                     ),
                   ],
                 ),
-                child: Text(
-                  recipe.preparazione,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    height: 1.7,
-                    color: Color(0xFF37474F),
-                  ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: preparationSteps.asMap().entries.map((entry) {
+                    final index = entry.key;
+                    final step = entry.value;
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Numero del passaggio
+                          Container(
+                            width: 28,
+                            height: 28,
+                            decoration: BoxDecoration(
+                              color: accentColor.withOpacity(0.15),
+                              shape: BoxShape.circle,
+                            ),
+                            child: Center(
+                              child: Text(
+                                '${index + 1}',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.bold,
+                                  color: accentColor,
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          // Testo del passaggio
+                          Expanded(
+                            child: Text(
+                              step,
+                              style: const TextStyle(
+                                fontSize: 15,
+                                height: 1.6,
+                                color: Color(0xFF37474F),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }).toList(),
                 ),
               ),
               const SizedBox(height: 24),
             ],
 
             // Messaggio se mancano dati
-            if (recipe.ingredientiDisplay.isEmpty && recipe.preparazione.isEmpty)
+            if (ingredients.isEmpty && preparationSteps.isEmpty)
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(24),
@@ -140,11 +247,13 @@ class RecipeDetailScreen extends StatelessWidget {
                 ),
                 child: Column(
                   children: [
-                    Icon(Icons.info_outline, color: Colors.grey.shade500, size: 48),
+                    Icon(Icons.info_outline,
+                        color: Colors.grey.shade500, size: 48),
                     const SizedBox(height: 12),
                     Text(
                       'Dettagli della ricetta non disponibili',
-                      style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
+                      style: TextStyle(
+                          color: Colors.grey.shade600, fontSize: 14),
                     ),
                   ],
                 ),

@@ -10,7 +10,7 @@ class RecipeService {
 
   List<Recipe>? _cachedRecipes;
 
-  Future<List<Recipe>> getRecipes() async {
+    Future<List<Recipe>> getRecipes() async {
     if (_cachedRecipes != null) return _cachedRecipes!;
 
     try {
@@ -32,8 +32,6 @@ class RecipeService {
         jsonList = decoded;
       } else if (decoded is Map) {
         print('⚠️ ATTENZIONE: Il file scaricato è un oggetto (Mappa), non una lista!');
-        print('👉 Probabilmente l\'URL di download punta alle API GitHub o il file non esiste.');
-        print('🔍 Inizio del contenuto scaricato: ${jsonString.substring(0, jsonString.length > 200 ? 200 : jsonString.length)}');
         return [];
       } else {
         print('⚠️ Formato JSON non valido.');
@@ -50,14 +48,20 @@ class RecipeService {
           return (jsonItem[key] ?? jsonItem['$key '] ?? '').toString().trim();
         }
 
+        // ✅ FIX: Gestione del Gruppo "O" (lettera) vs "0" (numero)
+        String rawGroup = getVal('Gruppo');
+        if (rawGroup.toUpperCase() == 'O') {
+          rawGroup = '0'; // Converte la lettera O nel numero 0
+        }
+
         recipes.add(Recipe(
-          gruppo: getVal('Gruppo'),
+          gruppo: rawGroup, // Usa il gruppo corretto
           nome: getVal('Nome'),
           tempo: getVal('Tempo'),
           difficolta: getVal('Difficolta'),
           ingredientiDisplay: getVal('Ingredienti_Display'),
           ingredientiMatching: getVal('Ingredienti_Matching')
-              .split(RegExp(r'[,;]')) // FIX: divide sia per virgola che per punto e virgola
+              .split(RegExp(r'[,;]'))
               .map((s) => s.trim())
               .where((s) => s.isNotEmpty)
               .toList(),

@@ -2,7 +2,7 @@ name: diete_gruppo_sanguigno
 description: "App per la dieta del gruppo sanguigno"
 publish_to: 'none'
 
-version: 1.0.8+9
+version: 1.0.10+11
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -19,6 +19,7 @@ dependencies:
   fl_chart: ^0.69.0
   url_launcher: ^6.2.6
   google_mobile_ads: ^5.1.0
+  share_plus: ^10.1.2  # 👈 AGGIUNGI QUESTA RIGA
 
 dev_dependencies:
   flutter_test:
@@ -26,6 +27,7 @@ dev_dependencies:
   flutter_lints: ^6.0.0
   change_app_package_name: ^1.5.0
   flutter_launcher_icons: ^0.14.4
+  
 
 flutter:
   uses-material-design: true

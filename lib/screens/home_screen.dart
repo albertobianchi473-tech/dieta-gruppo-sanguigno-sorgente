@@ -13,6 +13,7 @@ import 'personality_screen.dart';
 import 'nutrizionista_page.dart';
 import 'favorites_screen.dart';
 import 'meal_plan_screen.dart';
+import 'shopping_list_screen.dart'; // 👈 NUOVO IMPORT
 
 class HomeScreen extends StatefulWidget {
   final String? initialGroup;
@@ -225,8 +226,37 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 ),
               ),
               const SizedBox(height: 12),
+
+              // 👉 NUOVO: PULSANTE LISTA DELLA SPESA
+              Card(
+                elevation: 2,
+                margin: EdgeInsets.zero,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                color: const Color(0xFFE0F2F1),
+                child: ListTile(
+                  leading: const Icon(Icons.shopping_basket, color: Color(0xFF00897B), size: 28),
+                  title: const Text('Lista della Spesa', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Color(0xFF00897B))),
+                  subtitle: const Text('Generata dal piano settimanale', style: TextStyle(color: Color(0xFF00897B))),
+                  trailing: const Icon(Icons.arrow_forward_ios, color: Color(0xFF00897B), size: 18),
+                  onTap: () {
+                    if (_selectedGroup != null) {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => ShoppingListScreen(bloodGroup: _selectedGroup!),
+                        ),
+                      );
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Seleziona prima un gruppo sanguigno.')),
+                      );
+                    }
+                  },
+                ),
+              ),
+              const SizedBox(height: 12),
               
-              // ✅ PULSANTE PREFERITI (aggiornato con initialGroup)
+              // ✅ PULSANTE PREFERITI
               Card(
                 elevation: 2,
                 margin: EdgeInsets.zero,

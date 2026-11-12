@@ -39,9 +39,6 @@ class _RecipesScreenState extends State<RecipesScreen> {
   }
 
   Future<void> _loadRecipes() async {
-    // 🔍 DEBUG: solo nella console
-    print('📂 Caricamento ricette per gruppo ${widget.selectedGroup}...');
-    
     setState(() {
       _loading = true;
       _hasError = false;
@@ -49,10 +46,13 @@ class _RecipesScreenState extends State<RecipesScreen> {
 
     try {
       final recipes = await RecipeService().getRecipes();
-      final groupRecipes = recipes.where((r) => r.gruppo == widget.selectedGroup).toList();
       
-      // 🔍 DEBUG: solo nella console
-      print('✅ Trovate ${groupRecipes.length} ricette per gruppo ${widget.selectedGroup}');
+      // ✅ FIX: Gestisce sia "0" che "O" (lettera) per il Gruppo 0
+      final groupRecipes = recipes.where((r) {
+        final recipeGroup = r.gruppo.trim().toUpperCase();
+        final targetGroup = widget.selectedGroup.trim().toUpperCase();
+        return recipeGroup == targetGroup || (recipeGroup == 'O' && targetGroup == '0');
+      }).toList();
       
       setState(() {
         _allRecipes = groupRecipes;
@@ -60,9 +60,6 @@ class _RecipesScreenState extends State<RecipesScreen> {
         _loading = false;
       });
     } catch (e) {
-      // 🔍 DEBUG: solo nella console
-      print('❌ Errore caricamento ricette: $e');
-      
       setState(() {
         _hasError = true;
         _loading = false;
@@ -97,6 +94,19 @@ class _RecipesScreenState extends State<RecipesScreen> {
       case 'AB': return const Color(0xFF8E24AA);
       default: return Colors.blue;
     }
+  }
+
+  // ✅ NUOVI METODI PER PARSARE INGREDIENTI E PREPARAZIONE
+  List<String> _parseIngredients(String ingredientsText) {
+    if (ingredientsText.isEmpty) return [];
+    String normalized = ingredientsText.replaceAll('\n', ';');
+    List<String> items = normalized.split(RegExp(r'[;,\n]'));
+    return items.map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+  }
+
+  List<String> _parsePreparation(String prepText) {
+    if (prepText.isEmpty) return [];
+    return prepText.split('\n').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
   }
 
   @override
@@ -152,7 +162,6 @@ class _RecipesScreenState extends State<RecipesScreen> {
     );
   }
 
-  // 👇 Vista errore: semplice e amichevole (senza dettagli tecnici)
   Widget _buildErrorView(Color themeColor) {
     return Center(
       child: Padding(
@@ -164,20 +173,13 @@ class _RecipesScreenState extends State<RecipesScreen> {
             const SizedBox(height: 16),
             Text(
               'Impossibile caricare le ricette',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: Colors.grey[700],
-              ),
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.grey[700]),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 8),
             Text(
               'Verifica la connessione e riprova',
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.grey[500],
-              ),
+              style: TextStyle(fontSize: 14, color: Colors.grey[500]),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 24),
@@ -197,7 +199,6 @@ class _RecipesScreenState extends State<RecipesScreen> {
     );
   }
 
-  // 👇 Vista vuota: quando non ci sono ricette per il gruppo
   Widget _buildEmptyView(Color themeColor) {
     return Center(
       child: Padding(
@@ -211,11 +212,7 @@ class _RecipesScreenState extends State<RecipesScreen> {
               _searchController.text.isEmpty
                   ? 'Nessuna ricetta disponibile\nper il gruppo ${widget.selectedGroup}'
                   : 'Nessuna ricetta trovata\nper "${_searchController.text}"',
-              style: TextStyle(
-                fontSize: 16,
-                color: Colors.grey[600],
-                height: 1.4,
-              ),
+              style: TextStyle(fontSize: 16, color: Colors.grey[600], height: 1.4),
               textAlign: TextAlign.center,
             ),
           ],
@@ -224,7 +221,6 @@ class _RecipesScreenState extends State<RecipesScreen> {
     );
   }
 
-  // 👇 Lista ricette
   Widget _buildRecipesList(Color themeColor) {
     return ListView.builder(
       padding: const EdgeInsets.all(16),
@@ -282,88 +278,199 @@ class _RecipesScreenState extends State<RecipesScreen> {
     );
   }
 
-  // 👇 Dettaglio ricetta (modal bottom sheet)
   void _showRecipeDetails(BuildContext context, Recipe recipe, Color themeColor) {
+    final ingredients = _parseIngredients(recipe.ingredientiDisplay);
+    final preparationSteps = _parsePreparation(recipe.preparazione);
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (context) => Container(
-        padding: const EdgeInsets.all(24),
-        constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.85),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2))),
-            ),
-            const SizedBox(height: 16),
-            Text(recipe.nome, style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: themeColor)),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                if (recipe.tempo.isNotEmpty) ...[
-                  Icon(Icons.timer, color: themeColor),
-                  const SizedBox(width: 8),
-                  Text('Tempo: ${recipe.tempo}'),
-                  const SizedBox(width: 16),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => DraggableScrollableSheet(
+        initialChildSize: 0.85,
+        minChildSize: 0.5,
+        maxChildSize: 0.95,
+        expand: false,
+        builder: (context, scrollController) => Container(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Maniglia per trascinare
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey[300],
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              
+              // Titolo e Info
+              Text(
+                recipe.nome,
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                  color: themeColor,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  if (recipe.tempo.isNotEmpty) ...[
+                    Icon(Icons.timer_outlined, color: themeColor, size: 20),
+                    const SizedBox(width: 6),
+                    Text('${recipe.tempo} min', style: const TextStyle(fontWeight: FontWeight.w600)),
+                    const SizedBox(width: 16),
+                  ],
+                  Icon(Icons.bar_chart_outlined, color: themeColor, size: 20),
+                  const SizedBox(width: 6),
+                  Text(recipe.difficolta.isNotEmpty ? recipe.difficolta : 'N/D', style: const TextStyle(fontWeight: FontWeight.w600)),
                 ],
-                Icon(Icons.trending_up, color: themeColor),
-                const SizedBox(width: 8),
-                Text('Difficoltà: ${recipe.difficolta}'),
-              ],
-            ),
-            const Divider(height: 32),
-            const Text('INGREDIENTI', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
-            Expanded(
-              flex: 2,
-              child: ListView(
-                children: recipe.ingredientiDisplay.split(';').map((ing) {
-                  if (ing.trim().isEmpty) return const SizedBox.shrink();
-                  final isMatch = _searchController.text.isNotEmpty && 
-                      recipe.ingredientiMatching.any((matchingIng) => 
-                          matchingIng.toLowerCase().contains(_searchController.text.toLowerCase())
-                      );
-                  
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 4),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Icon(
-                          Icons.check_circle, 
-                          color: isMatch ? Colors.orange : themeColor, 
-                          size: 20
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            ing.trim(),
-                            style: TextStyle(
-                              fontWeight: isMatch ? FontWeight.bold : FontWeight.normal,
-                              color: isMatch ? Colors.orange : Colors.black87,
+              ),
+              const SizedBox(height: 20),
+              
+              // ✅ Ingredienti formattati
+              if (ingredients.isNotEmpty) ...[
+                _buildSectionHeader(title: 'INGREDIENTI', icon: Icons.shopping_basket, color: themeColor),
+                const SizedBox(height: 12),
+                Expanded(
+                  flex: 1,
+                  child: ListView.builder(
+                    controller: scrollController,
+                    itemCount: ingredients.length,
+                    itemBuilder: (context, index) {
+                      final ingredient = ingredients[index];
+                      final isMatch = _searchController.text.isNotEmpty && 
+                          recipe.ingredientiMatching.any((matchingIng) => 
+                              matchingIng.toLowerCase().contains(_searchController.text.toLowerCase()) &&
+                              ingredient.toLowerCase().contains(matchingIng.toLowerCase())
+                          );
+                      
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 6),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Container(
+                              margin: const EdgeInsets.only(top: 6),
+                              width: 6,
+                              height: 6,
+                              decoration: BoxDecoration(
+                                color: isMatch ? Colors.orange : themeColor,
+                                shape: BoxShape.circle,
+                              ),
                             ),
-                          ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                ingredient,
+                                style: TextStyle(
+                                  fontSize: 15,
+                                  height: 1.4,
+                                  color: isMatch ? Colors.orange : const Color(0xFF37474F),
+                                  fontWeight: isMatch ? FontWeight.bold : FontWeight.normal,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
-                      ],
-                    ),
-                  );
-                }).toList(),
-              ),
-            ),
-            const Divider(height: 32),
-            const Text('PREPARAZIONE', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
-            Expanded(
-              flex: 3,
-              child: SingleChildScrollView(
-                child: Text(recipe.preparazione, style: const TextStyle(fontSize: 15, height: 1.5)),
-              ),
-            ),
-          ],
+                      );
+                    },
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
+
+              // ✅ Preparazione formattata
+              if (preparationSteps.isNotEmpty) ...[
+                _buildSectionHeader(title: 'PREPARAZIONE', icon: Icons.local_dining, color: themeColor),
+                const SizedBox(height: 12),
+                Expanded(
+                  flex: 2,
+                  child: ListView.builder(
+                    controller: scrollController,
+                    itemCount: preparationSteps.length,
+                    itemBuilder: (context, index) {
+                      final step = preparationSteps[index];
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Container(
+                              width: 26,
+                              height: 26,
+                              decoration: BoxDecoration(
+                                color: themeColor.withOpacity(0.15),
+                                shape: BoxShape.circle,
+                              ),
+                              child: Center(
+                                child: Text(
+                                  '${index + 1}',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                    color: themeColor,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                step,
+                                style: const TextStyle(
+                                  fontSize: 15,
+                                  height: 1.5,
+                                  color: Color(0xFF37474F),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ],
+          ),
         ),
       ),
+    );
+  }
+
+  Widget _buildSectionHeader({required String title, required IconData icon, required Color color}) {
+    return Row(
+      children: [
+        Container(
+          width: 4,
+          height: 20,
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(2),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Icon(icon, color: color, size: 20),
+        const SizedBox(width: 8),
+        Text(
+          title,
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: color,
+            letterSpacing: 0.5,
+          ),
+        ),
+      ],
     );
   }
 }
