@@ -3,8 +3,8 @@ import '../models/blood_group.dart';
 import '../models/recipe.dart';
 import '../services/favorites_service.dart';
 import '../services/recipe_service.dart';
-import 'favorites_screen.dart';
 import 'recipe_detail_screen.dart';
+import 'rimedi_screen.dart';
 
 class DietScreen extends StatefulWidget {
   final BloodGroupDiet diet;
@@ -14,16 +14,16 @@ class DietScreen extends StatefulWidget {
   State<DietScreen> createState() => _DietScreenState();
 }
 
-class _DietScreenState extends State<DietScreen> with SingleTickerProviderStateMixin {
-  late TabController _tabController;
+class _DietScreenState extends State<DietScreen> with TickerProviderStateMixin {
+  late TabController _tabController; // Alimenti / Rimedi / Preferiti
+  late TabController _foodTabController; // Benefici / Indifferenti / Da Evitare
   Set<String> _favoriteNames = {};
-  
+
   List<Recipe> _allRecipes = [];
   Map<String, List<String>> _foodRecipesMap = {};
   bool _recipesLoaded = false;
-  
+
   String _selectedMealFilter = 'Tutti';
-  
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
 
@@ -36,11 +36,20 @@ class _DietScreenState extends State<DietScreen> with SingleTickerProviderStateM
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+    _foodTabController = TabController(length: 3, vsync: this);
     _loadFavorites();
     _loadRecipes();
     _searchController.addListener(() {
       setState(() => _searchQuery = _searchController.text.toLowerCase());
     });
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    _foodTabController.dispose();
+    _searchController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadFavorites() async {
@@ -56,51 +65,44 @@ class _DietScreenState extends State<DietScreen> with SingleTickerProviderStateM
     try {
       final recipeService = RecipeService();
       _allRecipes = await recipeService.getRecipes();
-      
-      final groupRecipes = _allRecipes.where((r) => 
-        r.gruppo.trim().toUpperCase() == widget.diet.group.trim().toUpperCase()
-      ).toList();
 
-      final allFoods = [...widget.diet.beneficial, ...widget.diet.neutral, ...widget.diet.harmful];
-      
+      // Normalizza il gruppo: gestisce "O" (lettera) e "0" (numero)
+      final target = widget.diet.group.trim().toUpperCase();
+      final groupRecipes = _allRecipes.where((r) {
+        final g = r.gruppo.trim().toUpperCase();
+        return g == target || (g == 'O' && target == '0');
+      }).toList();
+
+      final allFoods = [
+        ...widget.diet.beneficial,
+        ...widget.diet.neutral,
+        ...widget.diet.harmful,
+      ];
+
       for (final food in allFoods) {
         final foodNameLower = food.name.toLowerCase().trim();
-        final matchingRecipes = <String>[];
-        
+        final Set<String> matchingRecipes = {};
+
         for (final recipe in groupRecipes) {
           final hasIngredient = recipe.ingredientiMatching.any((ing) {
             final ingLower = ing.toLowerCase().trim();
-            return ingLower == foodNameLower || 
-                   ingLower.contains(foodNameLower) || 
-                   foodNameLower.contains(ingLower);
+            return ingLower == foodNameLower ||
+                ingLower.contains(foodNameLower) ||
+                foodNameLower.contains(ingLower);
           });
-          
-          if (hasIngredient) {
-            matchingRecipes.add(recipe.nome);
-          }
+          if (hasIngredient) matchingRecipes.add(recipe.nome);
         }
-        
+
         if (matchingRecipes.isNotEmpty) {
-          _foodRecipesMap[food.name] = matchingRecipes;
+          _foodRecipesMap[food.name] = matchingRecipes.toList();
         }
       }
-      
-      if (mounted) {
-        setState(() => _recipesLoaded = true);
-      }
+
+      if (mounted) setState(() => _recipesLoaded = true);
     } catch (e) {
       print('Errore caricamento ricette: $e');
-      if (mounted) {
-        setState(() => _recipesLoaded = true);
-      }
+      if (mounted) setState(() => _recipesLoaded = true);
     }
-  }
-
-  @override
-  void dispose() {
-    _tabController.dispose();
-    _searchController.dispose();
-    super.dispose();
   }
 
   Future<void> _toggleFavorite(FoodItem food) async {
@@ -111,12 +113,36 @@ class _DietScreenState extends State<DietScreen> with SingleTickerProviderStateM
       final isNowFav = _favoriteNames.contains(food.name);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(isNowFav 
-              ? '❤️ Aggiunto ai preferiti del Gruppo ${widget.diet.group}' 
+          content: Text(isNowFav
+              ? '❤️ Aggiunto ai preferiti del Gruppo ${widget.diet.group}'
               : 'Rimosso dai preferiti'),
           duration: const Duration(seconds: 1),
         ),
       );
+    }
+  }
+
+  Future<void> _confirmRemoveFavorite(FoodItem food) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Elimina preferito'),
+        content: Text('Vuoi rimuovere "${food.name}" dai preferiti?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Annulla'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Elimina'),
+          ),
+        ],
+      ),
+    );
+    if (confirm == true) {
+      await _toggleFavorite(food);
     }
   }
 
@@ -128,6 +154,8 @@ class _DietScreenState extends State<DietScreen> with SingleTickerProviderStateM
   }
 
   void _showRecipeDialog(String foodName, List<String> recipeNames) {
+    final uniqueRecipeNames = recipeNames.toSet().toList();
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -142,19 +170,19 @@ class _DietScreenState extends State<DietScreen> with SingleTickerProviderStateM
           width: double.maxFinite,
           child: ListView.builder(
             shrinkWrap: true,
-            itemCount: recipeNames.length,
+            itemCount: uniqueRecipeNames.length,
             itemBuilder: (context, index) {
-              final recipeName = recipeNames[index];
+              final recipeName = uniqueRecipeNames[index];
               final recipe = _allRecipes.firstWhere(
                 (r) => r.nome == recipeName,
                 orElse: () => Recipe(
-                  gruppo: '', 
-                  nome: recipeName, 
-                  tempo: '', 
-                  difficolta: '', 
-                  ingredientiDisplay: '', 
-                  ingredientiMatching: [], 
-                  preparazione: ''
+                  gruppo: '',
+                  nome: recipeName,
+                  tempo: '',
+                  difficolta: '',
+                  ingredientiDisplay: '',
+                  ingredientiMatching: [],
+                  preparazione: '',
                 ),
               );
               return ListTile(
@@ -162,9 +190,11 @@ class _DietScreenState extends State<DietScreen> with SingleTickerProviderStateM
                   backgroundColor: _colorRecipe.withOpacity(0.2),
                   child: Icon(Icons.restaurant, color: _colorRecipe),
                 ),
-                title: Text(recipe.nome, style: const TextStyle(fontWeight: FontWeight.bold)),
-                subtitle: (recipe.difficolta.isNotEmpty || recipe.tempo.isNotEmpty)
-                    ? Text('⏱️ ${recipe.tempo}  •  📊 ${recipe.difficolta}') 
+                title: Text(recipe.nome,
+                    style: const TextStyle(fontWeight: FontWeight.bold)),
+                subtitle: (recipe.difficolta.isNotEmpty ||
+                        recipe.tempo.isNotEmpty)
+                    ? Text('⏱️ ${recipe.tempo}  •  📊 ${recipe.difficolta}')
                     : null,
                 onTap: () {
                   Navigator.pop(context);
@@ -202,20 +232,55 @@ class _DietScreenState extends State<DietScreen> with SingleTickerProviderStateM
     }
   }
 
+  String _typeLabel(FoodItem food) {
+    switch (food.type) {
+      case FoodCategory.beneficial:
+        return '✅ Benefico';
+      case FoodCategory.neutral:
+        return '⚠️ Indifferente';
+      case FoodCategory.harmful:
+        return '❌ Da evitare';
+      default:
+        return '';
+    }
+  }
+
   IconData _getIconForCategory(String category) {
     final cat = category.toLowerCase();
     if (cat.contains('carne')) return Icons.set_meal;
-    if (cat.contains('pesce') || cat.contains('crostacei') || cat.contains('molluschi')) return Icons.set_meal;
+    if (cat.contains('pesce') ||
+        cat.contains('crostacei') ||
+        cat.contains('molluschi')) return Icons.set_meal;
     if (cat.contains('verdura') || cat.contains('ortaggi')) return Icons.eco;
     if (cat.contains('frutta')) return Icons.apple;
-    if (cat.contains('latticini') || cat.contains('formaggi') || cat.contains('yogurt')) return Icons.icecream;
-    if (cat.contains('cereali') || cat.contains('pane') || cat.contains('pasta') || cat.contains('riso')) return Icons.bakery_dining;
-    if (cat.contains('bevande') || cat.contains('succhi') || cat.contains('tè') || cat.contains('caffè') || cat.contains('acqua')) return Icons.local_drink;
-    if (cat.contains('olio') || cat.contains('grassi') || cat.contains('burro')) return Icons.water_drop;
-    if (cat.contains('dolci') || cat.contains('zuccheri') || cat.contains('miele')) return Icons.cake;
-    if (cat.contains('legumi') || cat.contains('fagioli') || cat.contains('lenticchie') || cat.contains('ceci')) return Icons.grain;
-    if (cat.contains('frutta secca') || cat.contains('noci') || cat.contains('mandorle')) return Icons.eco;
-    if (cat.contains('spezie') || cat.contains('erbe') || cat.contains('aromi')) return Icons.local_florist;
+    if (cat.contains('latticini') ||
+        cat.contains('formaggi') ||
+        cat.contains('yogurt')) return Icons.icecream;
+    if (cat.contains('cereali') ||
+        cat.contains('pane') ||
+        cat.contains('pasta') ||
+        cat.contains('riso')) return Icons.bakery_dining;
+    if (cat.contains('bevande') ||
+        cat.contains('succhi') ||
+        cat.contains('tè') ||
+        cat.contains('caffè') ||
+        cat.contains('acqua')) return Icons.local_drink;
+    if (cat.contains('olio') ||
+        cat.contains('grassi') ||
+        cat.contains('burro')) return Icons.water_drop;
+    if (cat.contains('dolci') ||
+        cat.contains('zuccheri') ||
+        cat.contains('miele')) return Icons.cake;
+    if (cat.contains('legumi') ||
+        cat.contains('fagioli') ||
+        cat.contains('lenticchie') ||
+        cat.contains('ceci')) return Icons.grain;
+    if (cat.contains('frutta secca') ||
+        cat.contains('noci') ||
+        cat.contains('mandorle')) return Icons.eco;
+    if (cat.contains('spezie') ||
+        cat.contains('erbe') ||
+        cat.contains('aromi')) return Icons.local_florist;
     if (cat.contains('uova')) return Icons.egg;
     return Icons.restaurant;
   }
@@ -227,13 +292,11 @@ class _DietScreenState extends State<DietScreen> with SingleTickerProviderStateM
           !food.category.toLowerCase().contains(_searchQuery)) {
         return false;
       }
-      
       if (_selectedMealFilter != 'Tutti') {
         final quando = food.quandoMangiarlo.toLowerCase();
         final keyword = _selectedMealFilter.toLowerCase();
         return quando.contains(keyword) || quando.isEmpty;
       }
-      
       return true;
     }).toList();
   }
@@ -241,12 +304,11 @@ class _DietScreenState extends State<DietScreen> with SingleTickerProviderStateM
   Map<String, List<FoodItem>> _groupedByCategory(List<FoodItem> foods) {
     final Map<String, List<FoodItem>> grouped = {};
     for (final food in foods) {
-      final category = food.category.isNotEmpty && food.category.toLowerCase() != 'altro' 
-          ? food.category 
-          : 'Altro';
-      if (!grouped.containsKey(category)) {
-        grouped[category] = [];
-      }
+      final category =
+          food.category.isNotEmpty && food.category.toLowerCase() != 'altro'
+              ? food.category
+              : 'Altro';
+      if (!grouped.containsKey(category)) grouped[category] = [];
       grouped[category]!.add(food);
     }
     return grouped;
@@ -268,41 +330,25 @@ class _DietScreenState extends State<DietScreen> with SingleTickerProviderStateM
           unselectedLabelColor: Colors.white70,
           indicatorColor: Colors.white,
           tabs: const [
-            Tab(text: 'Benefici'),
-            Tab(text: 'Indifferenti'),
-            Tab(text: 'Da Evitare'),
+            Tab(icon: Icon(Icons.restaurant), text: 'Alimenti'),
+            Tab(icon: Icon(Icons.eco), text: 'Rimedi'),
+            Tab(icon: Icon(Icons.favorite), text: 'Preferiti'),
           ],
         ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.favorite_border),
-            tooltip: 'Vedi Preferiti',
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => FavoritesScreen(initialGroup: widget.diet.group),
-                ),
-              );
-            },
-          ),
-        ],
       ),
       body: TabBarView(
         controller: _tabController,
         children: [
-          _buildFoodList(widget.diet.beneficial, color, FoodCategory.beneficial),
-          _buildFoodList(widget.diet.neutral, color, FoodCategory.neutral),
-          _buildFoodList(widget.diet.harmful, color, FoodCategory.harmful),
+          _buildAlimentiTab(color),
+          RimediScreen(group: widget.diet.group),
+          _buildPreferitiTab(color),
         ],
       ),
     );
   }
 
-  Widget _buildFoodList(List<FoodItem> foods, Color themeColor, FoodCategory category) {
-    final filteredFoods = _getFilteredFoods(foods);
-    final groupedFoods = _groupedByCategory(filteredFoods);
-
+  // ================= TAB ALIMENTI =================
+  Widget _buildAlimentiTab(Color themeColor) {
     return Column(
       children: [
         // Filtri pasto
@@ -314,48 +360,59 @@ class _DietScreenState extends State<DietScreen> with SingleTickerProviderStateM
             child: ListView(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 8),
-              children: ['Tutti', 'Colazione', 'Pranzo', 'Cena', 'Merenda'].map((filter) {
-                final isSelected = _selectedMealFilter == filter;
-                return Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                  child: GestureDetector(
-                    onTap: () {
-                      setState(() => _selectedMealFilter = filter);
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: isSelected ? themeColor.withOpacity(0.15) : Colors.white,
-                        border: Border.all(
-                          color: isSelected ? themeColor : Colors.grey.shade300,
-                          width: isSelected ? 1.5 : 1,
-                        ),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          if (isSelected)
-                            Icon(Icons.check, color: themeColor, size: 16),
-                          if (isSelected) const SizedBox(width: 4),
-                          Text(
-                            filter,
-                            style: TextStyle(
-                              color: isSelected ? themeColor : Colors.black87,
-                              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                              fontSize: 14,
-                            ),
+              children:
+                  ['Tutti', 'Colazione', 'Pranzo', 'Cena', 'Merenda'].map(
+                (filter) {
+                  final isSelected = _selectedMealFilter == filter;
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: GestureDetector(
+                      onTap: () {
+                        setState(() => _selectedMealFilter = filter);
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: isSelected
+                              ? themeColor.withOpacity(0.15)
+                              : Colors.white,
+                          border: Border.all(
+                            color: isSelected
+                                ? themeColor
+                                : Colors.grey.shade300,
+                            width: isSelected ? 1.5 : 1,
                           ),
-                        ],
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (isSelected)
+                              Icon(Icons.check, color: themeColor, size: 16),
+                            if (isSelected) const SizedBox(width: 4),
+                            Text(
+                              filter,
+                              style: TextStyle(
+                                color:
+                                    isSelected ? themeColor : Colors.black87,
+                                fontWeight: isSelected
+                                    ? FontWeight.bold
+                                    : FontWeight.normal,
+                                fontSize: 14,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-                );
-              }).toList(),
+                  );
+                },
+              ).toList(),
             ),
           ),
         ),
-        
+
         // Barra di ricerca
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -386,172 +443,322 @@ class _DietScreenState extends State<DietScreen> with SingleTickerProviderStateM
             ),
           ),
         ),
-        
-        // Lista alimenti
+
+        // Tab interne: Benefici / Indifferenti / Da Evitare
+        Container(
+          color: Colors.white,
+          child: TabBar(
+            controller: _foodTabController,
+            labelColor: themeColor,
+            unselectedLabelColor: Colors.grey,
+            indicatorColor: themeColor,
+            tabs: const [
+              Tab(text: 'Benefici'),
+              Tab(text: 'Indifferenti'),
+              Tab(text: 'Da Evitare'),
+            ],
+          ),
+        ),
+
+        // Liste alimenti
         Expanded(
-          child: !_recipesLoaded
-              ? const Center(child: CircularProgressIndicator())
-              : groupedFoods.isEmpty
-                  ? Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.search_off, color: Colors.grey.shade400, size: 48),
-                          const SizedBox(height: 12),
-                          Text(
-                            'Nessun alimento trovato',
-                            style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
-                          ),
-                        ],
-                      ),
-                    )
-                  : ListView.builder(
-                      padding: const EdgeInsets.all(16),
-                      itemCount: groupedFoods.keys.length,
-                      itemBuilder: (context, index) {
-                        final catName = groupedFoods.keys.elementAt(index);
-                        final catFoods = groupedFoods[catName]!;
-                        final categoryIcon = _getIconForCategory(catName);
-
-                        return Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            // Intestazione categoria
-                            Padding(
-                              padding: const EdgeInsets.only(top: 12, bottom: 8),
-                              child: Row(
-                                children: [
-                                  Container(
-                                    width: 4,
-                                    height: 22,
-                                    decoration: BoxDecoration(
-                                      color: themeColor,
-                                      borderRadius: BorderRadius.circular(2),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 10),
-                                  Expanded(
-                                    child: Text(
-                                      catName.toUpperCase(),
-                                      style: TextStyle(
-                                        fontSize: 17,
-                                        fontWeight: FontWeight.bold,
-                                        color: themeColor,
-                                        letterSpacing: 0.5,
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
-                                    decoration: BoxDecoration(
-                                      color: _colorBeneficial.withOpacity(0.15),
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    child: Text(
-                                      '${catFoods.length}',
-                                      style: const TextStyle(
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.bold,
-                                        color: _colorBeneficial,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            // Chip alimenti
-                            Wrap(
-                              spacing: 8,
-                              runSpacing: 8,
-                              children: catFoods.map((food) {
-                                final isFavorite = _favoriteNames.contains(food.name);
-                                final foodColor = _getColorForFood(food);
-                                final hasRecipe = _foodRecipesMap.containsKey(food.name);
-                                final hasQuando = food.quandoMangiarlo.isNotEmpty;
-                                
-                                final borderColor = hasRecipe 
-                                    ? _colorRecipe 
-                                    : foodColor.withOpacity(0.6);
-                                final borderWidth = hasRecipe ? 3.0 : 1.0;
-                                final bgColor = hasRecipe 
-                                    ? _colorRecipe.withOpacity(0.08) 
-                                    : foodColor.withOpacity(0.1);
-
-                                return GestureDetector(
-                                  onTap: () => _onFoodTap(food),
-                                  onLongPress: () => _toggleFavorite(food),
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                    decoration: BoxDecoration(
-                                      color: bgColor,
-                                      border: Border.all(
-                                        color: borderColor,
-                                        width: borderWidth,
-                                      ),
-                                      borderRadius: BorderRadius.circular(25),
-                                      boxShadow: hasRecipe ? [
-                                        BoxShadow(
-                                          color: _colorRecipe.withOpacity(0.3),
-                                          blurRadius: 4,
-                                          offset: const Offset(0, 2),
-                                        ),
-                                      ] : [],
-                                    ),
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Icon(
-                                          categoryIcon,
-                                          color: foodColor,
-                                          size: 16,
-                                        ),
-                                        const SizedBox(width: 6),
-                                        Text(
-                                          food.name,
-                                          style: TextStyle(
-                                            fontWeight: FontWeight.w600,
-                                            color: Colors.black87,
-                                            fontSize: 13,
-                                          ),
-                                        ),
-                                        if (hasQuando) ...[
-                                          const SizedBox(width: 4),
-                                          Icon(
-                                            Icons.restaurant,
-                                            color: _colorNeutral,
-                                            size: 14,
-                                          ),
-                                        ],
-                                        if (hasRecipe) ...[
-                                          const SizedBox(width: 4),
-                                          Icon(
-                                            Icons.menu_book,
-                                            color: _colorRecipe,
-                                            size: 14,
-                                          ),
-                                        ],
-                                        if (isFavorite) ...[
-                                          const SizedBox(width: 4),
-                                          Icon(
-                                            Icons.favorite,
-                                            color: Colors.redAccent,
-                                            size: 16,
-                                          ),
-                                        ],
-                                      ],
-                                    ),
-                                  ),
-                                );
-                              }).toList(),
-                            ),
-                            const SizedBox(height: 8),
-                          ],
-                        );
-                      },
-                    ),
+          child: TabBarView(
+            controller: _foodTabController,
+            children: [
+              _buildFoodList(widget.diet.beneficial, themeColor),
+              _buildFoodList(widget.diet.neutral, themeColor),
+              _buildFoodList(widget.diet.harmful, themeColor),
+            ],
+          ),
         ),
       ],
+    );
+  }
+
+  Widget _buildFoodList(List<FoodItem> foods, Color themeColor) {
+    final filteredFoods = _getFilteredFoods(foods);
+    final groupedFoods = _groupedByCategory(filteredFoods);
+
+    if (!_recipesLoaded) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (groupedFoods.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.search_off, color: Colors.grey.shade400, size: 48),
+            const SizedBox(height: 12),
+            Text(
+              'Nessun alimento trovato',
+              style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: groupedFoods.keys.length,
+      itemBuilder: (context, index) {
+        final catName = groupedFoods.keys.elementAt(index);
+        final catFoods = groupedFoods[catName]!;
+        final categoryIcon = _getIconForCategory(catName);
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(top: 12, bottom: 8),
+              child: Row(
+                children: [
+                  Container(
+                    width: 4,
+                    height: 22,
+                    decoration: BoxDecoration(
+                      color: themeColor,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      catName.toUpperCase(),
+                      style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.bold,
+                        color: themeColor,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: themeColor.withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      '${catFoods.length}',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                        color: themeColor,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: catFoods.map((food) {
+                final isFavorite = _favoriteNames.contains(food.name);
+                final foodColor = _getColorForFood(food);
+                final hasRecipe = _foodRecipesMap.containsKey(food.name);
+                final hasQuando = food.quandoMangiarlo.isNotEmpty;
+
+                final borderColor =
+                    hasRecipe ? _colorRecipe : foodColor.withOpacity(0.6);
+                final borderWidth = hasRecipe ? 3.0 : 1.0;
+                final bgColor = hasRecipe
+                    ? _colorRecipe.withOpacity(0.08)
+                    : foodColor.withOpacity(0.1);
+
+                return GestureDetector(
+                  onTap: () => _onFoodTap(food),
+                  onLongPress: () => _toggleFavorite(food),
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: bgColor,
+                      border: Border.all(color: borderColor, width: borderWidth),
+                      borderRadius: BorderRadius.circular(25),
+                      boxShadow: hasRecipe
+                          ? [
+                              BoxShadow(
+                                color: _colorRecipe.withOpacity(0.3),
+                                blurRadius: 4,
+                                offset: const Offset(0, 2),
+                              ),
+                            ]
+                          : [],
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(categoryIcon, color: foodColor, size: 16),
+                        const SizedBox(width: 6),
+                        Text(
+                          food.name,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w600,
+                            color: Colors.black87,
+                            fontSize: 13,
+                          ),
+                        ),
+                        if (hasQuando) ...[
+                          const SizedBox(width: 4),
+                          Icon(Icons.restaurant, color: _colorNeutral, size: 14),
+                        ],
+                        if (hasRecipe) ...[
+                          const SizedBox(width: 4),
+                          Icon(Icons.menu_book, color: _colorRecipe, size: 14),
+                        ],
+                        if (isFavorite) ...[
+                          const SizedBox(width: 4),
+                          const Icon(Icons.favorite,
+                              color: Colors.redAccent, size: 16),
+                        ],
+                      ],
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+            const SizedBox(height: 8),
+          ],
+        );
+      },
+    );
+  }
+
+  // ================= TAB PREFERITI =================
+  Widget _buildPreferitiTab(Color themeColor) {
+    final allFoods = [
+      ...widget.diet.beneficial,
+      ...widget.diet.neutral,
+      ...widget.diet.harmful,
+    ];
+    final favFoods =
+        allFoods.where((f) => _favoriteNames.contains(f.name)).toList();
+
+    if (favFoods.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.favorite_border, color: Colors.grey.shade400, size: 64),
+              const SizedBox(height: 16),
+              Text(
+                'Nessun preferito per il Gruppo ${widget.diet.group}',
+                style: TextStyle(
+                  fontSize: 16,
+                  color: Colors.grey.shade600,
+                  fontWeight: FontWeight.bold,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Tieni premuto su un alimento nella tab Alimenti per aggiungerlo ai preferiti.',
+                style: TextStyle(
+                    fontSize: 13, color: Colors.grey.shade500, height: 1.4),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final grouped = _groupedByCategory(favFoods);
+
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: grouped.keys.length,
+      itemBuilder: (context, index) {
+        final catName = grouped.keys.elementAt(index);
+        final catFoods = grouped[catName]!;
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(top: 12, bottom: 8),
+              child: Row(
+                children: [
+                  Container(
+                    width: 4,
+                    height: 20,
+                    decoration: BoxDecoration(
+                      color: themeColor,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      catName.toUpperCase(),
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: themeColor,
+                      ),
+                    ),
+                  ),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: themeColor.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      '${catFoods.length}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: themeColor,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Card(
+              elevation: 1,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
+              child: Column(
+                children: catFoods.map((food) {
+                  final foodColor = _getColorForFood(food);
+                  return ListTile(
+                    leading: CircleAvatar(
+                      backgroundColor: foodColor.withOpacity(0.15),
+                      child: Icon(_getIconForCategory(food.category),
+                          color: foodColor, size: 20),
+                    ),
+                    title: Text(
+                      food.name,
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w600, fontSize: 15),
+                    ),
+                    subtitle: Text(
+                      _typeLabel(food),
+                      style: TextStyle(
+                          color: foodColor,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500),
+                    ),
+                    trailing:
+                        const Icon(Icons.favorite, color: Colors.redAccent),
+                    onLongPress: () => _confirmRemoveFavorite(food),
+                  );
+                }).toList(),
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
+        );
+      },
     );
   }
 }
